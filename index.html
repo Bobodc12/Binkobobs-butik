@@ -243,17 +243,24 @@
                     <div class="flex justify-between font-bold"><span>Order:</span> <span id="rec-orderno"></span></div>
                 </div>
 
-                <div id="rec-items" class="py-4 space-y-1"></div>
+                <div id="rec-items" class="py-4 space-y-1 border-b border-dashed border-gray-200"></div>
 
-                <div class="border-t border-dashed border-gray-300 pt-4 space-y-1 font-bold">
-                    <div class="flex justify-between text-xs text-gray-600 uppercase">
-                        <span>Netto:</span> <span id="rec-netto"></span>
+                <div class="py-4 space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <span>Frakt:</span> 
+                        <span id="rec-shipping-cost"></span>
                     </div>
-                    <div class="flex justify-between text-xs text-gray-600 uppercase">
-                        <span>Moms (25%):</span> <span id="rec-vat"></span>
+                    <div class="flex justify-between text-xs text-gray-500">
+                        <span>Netto (exkl. moms):</span> 
+                        <span id="rec-netto"></span>
                     </div>
-                    <div class="flex justify-between text-base border-t border-gray-100 pt-1 mt-1">
-                        <span>TOTALT:</span> <span id="rec-total"></span>
+                    <div class="flex justify-between text-xs text-gray-500">
+                        <span>Moms (25%):</span> 
+                        <span id="rec-vat"></span>
+                    </div>
+                    <div class="flex justify-between text-base font-bold border-t border-double border-gray-800 pt-2 mt-2">
+                        <span>TOTALT ATT BETALA:</span> 
+                        <span id="rec-total"></span>
                     </div>
                 </div>
 
@@ -311,7 +318,11 @@
                     <p class="text-xs text-gray-500 mb-4">${p.description}</p>
                     <div class="flex justify-between items-center">
                         <span class="font-bold text-indigo-600">${p.price} kr</span>
-                        <button onclick="addToCart(${p.id})" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition active:scale-95">Köp</button>
+                        <button onclick="addToCart(${p.id})" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition active:scale-95 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             `).join('');
@@ -447,21 +458,27 @@
             
             const orderNo = "ORD-" + Math.floor(Math.random()*90000 + 10000);
             const shipVal = document.querySelector('input[name="shipping-method"]:checked').value;
-            const shipNames = { pickup: 'Hämta i butik', post1: 'Postmetod 1', post2: 'Postmetod 2' };
-            const cardNum = document.getElementById('card-number-input').value.trim();
+            
+            // Hämta den exakta fraktkostnaden som en siffra
+            let shippingCost = 0;
+            if (shipVal === 'post1') shippingCost = 29;
+            if (shipVal === 'post2') shippingCost = 79;
 
-            let subtotal = cart.reduce((s, i) => s + (i.price * i.quantity), 0);
-            let shipCost = (shipVal === 'post1') ? 29 : (shipVal === 'post2' ? 79 : 0);
+            const subtotal = cart.reduce((s, i) => s + (i.price * i.quantity), 0);
+            const finalTotal = subtotal + shippingCost;
 
             finalOrderData = {
                 orderNo: orderNo,
-                total: subtotal + shipCost,
-                payment: selectedPayment,
                 items: [...cart],
+                shippingCost: shippingCost, // Sparar siffran här!
+                total: finalTotal,
+                payment: selectedPayment,
                 customer: document.getElementById('cust-name').value,
-                shipping: shipNames[shipVal],
-                lastDigits: cardNum.slice(-2) || "XX"
+                lastDigits: document.getElementById('card-number-input').value.slice(-2) || "XX"
             };
+
+            // ... resten av din kod för att visa success-vyn
+
 
             document.getElementById('stepper-nav').classList.add('hidden');
             document.querySelectorAll('.step-content').forEach(c => c.classList.add('hidden'));
@@ -476,38 +493,57 @@
 
         function showReceipt() {
             const now = new Date();
-            // Beräkningar
-            const totalRaw = finalOrderData.total;
-            const netto = Math.round(totalRaw / 1.25);
-            const moms = totalRaw - netto;
+            const data = finalOrderData;
+
+            const shipping = data.shippingCost || 0;
+            const totalWithShipping = data.total;
+            const productTotal = totalWithShipping - shipping;
+
+            // Beräkna moms och netto på varorna
+            // Vi använder en liten "epsilon" (0.0001) för att motverka floating point errors innan avrundning
+            const productMoms = Math.round((productTotal * 0.2) * 100) / 100;
+            const productNetto = Math.round((productTotal - productMoms) * 100) / 100;
+
+            // Hjälpfunktion för att formatera numret enligt dina önskemål
+            const formatPrice = (num) => {
+                // Rensa eventuella extremt små flyttalsfel först
+                const cleanNum = Math.round(num * 100) / 100;
+                
+                if (Number.isInteger(cleanNum)) {
+                    return cleanNum; // Returnerar t.ex. 500
+                } else {
+                    // Returnerar t.ex. "40,40" istället för "40.4"
+                    return cleanNum.toFixed(2).replace('.', ',');
+                }
+            };
 
             document.getElementById('rec-date').innerText = now.toLocaleString();
-            document.getElementById('rec-orderno').innerText = finalOrderData.orderNo;
+            document.getElementById('rec-orderno').innerText = data.orderNo;
             
-            // Uppdaterade fält för Netto, Moms och Totalt
-            document.getElementById('rec-netto').innerText = netto + " KR";
-            document.getElementById('rec-vat').innerText = moms + " KR";
-            document.getElementById('rec-total').innerText = totalRaw + " KR";
-            
-            document.getElementById('rec-paymethod').innerText = finalOrderData.payment;
-
-            if (finalOrderData.payment === 'kort') {
-                document.getElementById('rec-card-info').classList.remove('hidden');
-                document.getElementById('rec-card-num').innerText = "**** **** **** **" + finalOrderData.lastDigits;
-            } else {
-                document.getElementById('rec-card-info').classList.add('hidden');
-            }
-
-            document.getElementById('rec-items').innerHTML = finalOrderData.items.map(i => `
+            // Produkter i listan
+            document.getElementById('rec-items').innerHTML = data.items.map(i => `
                 <div class="flex justify-between">
                     <span>${i.name} x${i.quantity}</span>
-                    <span>${i.price * i.quantity}</span>
+                    <span>${formatPrice(i.price * i.quantity)} KR</span>
                 </div>
             `).join('');
 
+            // Ekonomisk specifikation med den nya formateringen
+            document.getElementById('rec-shipping-cost').innerText = formatPrice(shipping) + " KR";
+            document.getElementById('rec-netto').innerText = formatPrice(productNetto) + " KR";
+            document.getElementById('rec-vat').innerText = formatPrice(productMoms) + " KR";
+            document.getElementById('rec-total').innerText = formatPrice(totalWithShipping) + " KR";
+            
+            document.getElementById('rec-paymethod').innerText = data.payment;
+
+            if (data.payment === 'kort') {
+                document.getElementById('rec-card-info').classList.remove('hidden');
+                document.getElementById('rec-card-num').innerText = "**** **** **** **" + data.lastDigits;
+            }
+
             document.getElementById('receipt-modal').classList.remove('hidden');
         }
-
+        
         function closeReceipt() {
             document.getElementById('receipt-modal').classList.add('hidden');
         }
